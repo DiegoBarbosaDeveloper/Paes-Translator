@@ -1,9 +1,17 @@
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+"""
+Motor de traducción desacoplado del catálogo de idiomas.
+
+El diccionario rápido se resuelve por ``source_lang`` y ``target_lang`` en la
+base de datos. El modelo generativo es una estrategia opcional: puede no
+existir localmente, no tener un token para un código concreto o fallar al
+cargar sus pesos. Ninguna de esas condiciones debe impedir que la aplicación
+arranque ni que el diccionario siga funcionando, por lo que cada etapa falla
+de forma aislada y termina en un fallback válido.
+"""
+
+from transformers import AutoModelForSeq2SeqLM
 import torch
 import os
-import json
-from typing import Dict
-from grammar_engine import ConjugationEngine
 from database import get_db
 import logging
 
@@ -12,16 +20,14 @@ class AdvancedTranslationModel:
     Modelo de traducción avanzado que combina:
     1. Modelo NLLB-200 para traducción contextual
     2. Diccionario personalizado para términos específicos
-    3. Motor gramatical para reglas del Nasa Yuwe
+    3. Modelo generativo opcional con códigos de idioma configurables
     """
     
-    def __init__(self, dictionary_path='data/nasa_yuwe_dictionary.json', db=None):
-        self.dictionary_path = dictionary_path
+    def __init__(self, db=None):
         self.db = db or get_db()
         self.model = None
         self.tokenizer = None
         self.dictionary = {}
-        self.grammar_engine = None
         self.model_loaded = False
         
         # Configurar logging
@@ -29,36 +35,28 @@ class AdvancedTranslationModel:
         self.logger = logging.getLogger(__name__)
         
         # Inicializar componentes
-        self._load_dictionary()
-        self._initialize_grammar_engine()
         self._load_nllb_model()
     
-    def _load_dictionary(self):
-        """Cargar el diccionario personalizado de Nasa Yuwe desde MySQL"""
+    def _load_dictionary(self, source_lang, target_lang):
+        """Cargar los pares de texto de la dirección solicitada."""
         try:
-            self.dictionary = self.db.get_all_dictionary()
-            self.logger.info(f"Diccionario cargado desde MySQL: {len(self.dictionary)} entradas")
+            source_lang = source_lang.strip()
+            target_lang = target_lang.strip()
+            self.dictionary = self.db.get_dictionary(source_lang, target_lang)
+            self.logger.info(f"Pares cargados: {len(self.dictionary)}")
         except Exception as e:
-            self.logger.error(f"Error cargando diccionario desde MySQL: {e}")
-            # Fallback a JSON si MySQL falla
-            try:
-                if os.path.exists(self.dictionary_path):
-                    with open(self.dictionary_path, 'r', encoding='utf-8') as f:
-                        self.dictionary = json.load(f)
-                    self.logger.info(f"Diccionario cargado desde JSON (fallback): {len(self.dictionary)} entradas")
-            except Exception as e2:
-                self.logger.error(f"Error cargando diccionario JSON de respaldo: {e2}")
-    
-    def _initialize_grammar_engine(self):
-        """Inicializar el motor gramatical"""
-        try:
-            self.grammar_engine = ConjugationEngine(self.dictionary_path)
-            self.logger.info("Motor gramatical inicializado")
-        except Exception as e:
-            self.logger.error(f"Error inicializando motor gramatical: {e}")
+            self.logger.error(f"Error cargando pares lingüísticos: {e}")
+            self.dictionary = {}
     
     def _load_nllb_model(self):
-        """Cargar el modelo NLLB-200 (fine-tuneado si existe, base si no)."""
+        """
+        Cargar pesos opcionales sin convertirlos en requisito de arranque.
+
+        La aplicación puede operar con el repositorio léxico aunque el modelo
+        sea demasiado grande, no esté descargado o tenga una configuración
+        incompatible. Por ello los errores de importación, tokenización y
+        carga se registran y dejan el motor en estado ``none``.
+        """
         finetuned_path = "models/nllb-finetuned"
         base_path      = "models/nllb-200-distilled-600M"
 
@@ -66,13 +64,13 @@ class AdvancedTranslationModel:
         if os.path.exists(finetuned_path) and os.listdir(finetuned_path):
             model_path   = finetuned_path
             self.model_type = "fine-tuned"
-            self.logger.info("Usando modelo NLLB fine-tuneado para Nasa Yuwe")
+            self.logger.info("Usando modelo NLLB fine-tuneado")
         elif os.path.exists(base_path):
             model_path   = base_path
             self.model_type = "base"
             self.logger.info("Usando modelo NLLB base (sin fine-tuning)")
         else:
-            self.logger.warning("Ningún modelo NLLB disponible, usando solo diccionario")
+            self.logger.warning("Ningún modelo NLLB disponible, usando pares lingüísticos")
             self.model_type = "none"
             return
 
@@ -110,12 +108,8 @@ class AdvancedTranslationModel:
             self.model_type   = "none"
     
     def _get_language_code(self, lang):
-        """Obtener códigos de idioma para NLLB"""
-        language_codes = {
-            'spanish': 'spa_Latn',
-            'nasa_yuwe': 'spa_Latn'  # Fallback a español por falta de soporte directo
-        }
-        return language_codes.get(lang, 'spa_Latn')
+        """Usar el código configurado por el catálogo de idiomas."""
+        return lang
     
     def _translate_with_dictionary(self, text, source_lang, target_lang):
         """Traducción usando el diccionario personalizado"""
@@ -126,27 +120,12 @@ class AdvancedTranslationModel:
         translated_words = []
         found_translations = False
         
-        if source_lang == 'spanish' and target_lang == 'nasa_yuwe':
-            for word in words:
-                if word in self.dictionary:
-                    translated_words.append(self.dictionary[word]['traduccion'])
-                    found_translations = True
-                else:
-                    translated_words.append(word)
-        
-        elif source_lang == 'nasa_yuwe' and target_lang == 'spanish':
-            # Crear diccionario inverso
-            reverse_dict = {}
-            for spanish_word, data in self.dictionary.items():
-                nasa_word = data['traduccion'].lower()
-                reverse_dict[nasa_word] = spanish_word
-            
-            for word in words:
-                if word in reverse_dict:
-                    translated_words.append(reverse_dict[word])
-                    found_translations = True
-                else:
-                    translated_words.append(word)
+        for word in words:
+            if word in self.dictionary:
+                translated_words.append(self.dictionary[word]['target_text'])
+                found_translations = True
+            else:
+                translated_words.append(word)
         
         if found_translations:
             result = ' '.join(translated_words)
@@ -160,7 +139,14 @@ class AdvancedTranslationModel:
         return None
     
     def _translate_with_nllb(self, text, source_lang, target_lang):
-        """Traducción usando el modelo NLLB-200"""
+        """
+        Ejecutar la estrategia generativa de forma defensiva.
+
+        Los códigos de ``languages`` son datos configurables y no todos son
+        necesariamente tokens válidos para NLLB. Se comprueba el token de
+        destino antes de llamar a ``generate`` y se devuelve ``None`` ante
+        cualquier incompatibilidad, permitiendo que el fallback continúe.
+        """
         if not self.model_loaded:
             return None
         
@@ -178,6 +164,15 @@ class AdvancedTranslationModel:
             
             # Obtener el ID del token de idioma destino
             tgt_lang_id = self.tokenizer.convert_tokens_to_ids(tgt_lang_code)
+            if tgt_lang_id is None or tgt_lang_id == self.tokenizer.unk_token_id:
+                self.logger.warning(
+                    "Código de idioma no soportado por el tokenizer: %s",
+                    tgt_lang_code,
+                )
+                return None
+            if tgt_lang_id is None or tgt_lang_id == self.tokenizer.unk_token_id:
+                self.logger.warning("Código de idioma no soportado por el tokenizer: %s", tgt_lang_code)
+                return None
             
             # Generar traducción
             with torch.no_grad():
@@ -197,39 +192,20 @@ class AdvancedTranslationModel:
             self.logger.error(f"Error en traducción NLLB: {e}")
             return None
     
-    def _translate_with_grammar(self, text: str, source_lang: str, target_lang: str) -> Dict:
-        """Traducir usando el motor gramatical"""
-        if self.grammar_engine:
-            try:
-                # Intentar con el método contextual mejorado primero
-                enhanced = self.grammar_engine.enhanced_contextual_translation(text, source_lang, target_lang)
-                if enhanced and enhanced != text:
-                    return {
-                        'translation': enhanced,
-                        'method': 'enhanced_grammar',
-                        'confidence': 0.90,
-                        'tried_methods': ['enhanced_grammar']
-                    }
-                
-                # Fallback al método original
-                enhanced = self.grammar_engine.enhance_translation(text, source_lang, target_lang)
-                if enhanced and enhanced != text:
-                    return {
-                        'translation': enhanced,
-                        'method': 'grammar',
-                        'confidence': 0.90,
-                        'tried_methods': ['enhanced_grammar', 'grammar']
-                    }
-            except Exception as e:
-                print(f"Error en motor gramatical: {e}")
-        return None
-    
-    def translate(self, text, source_lang='spanish', target_lang='nasa_yuwe'):
-        """Traducción híbrida usando múltiples métodos"""
+    def translate(self, text, source_lang, target_lang):
+        """
+        Ejecutar estrategias en orden de coste y precisión.
+
+        Primero se consulta el catálogo persistente porque es rápido y está
+        adaptado al corpus de la aplicación. Solo si no hay coincidencia se
+        intenta el modelo generativo; finalmente se devuelve el texto de
+        entrada, manteniendo una respuesta válida incluso sin modelo local.
+        """
         if not text or not text.strip():
             return {'translation': '', 'method': 'empty', 'confidence': 0}
         
         text = text.strip()
+        self._load_dictionary(source_lang, target_lang)
         
         # Intentar diferentes métodos de traducción en orden de prioridad
         
@@ -238,12 +214,7 @@ class AdvancedTranslationModel:
         if dict_result:
             return dict_result
         
-        # 2. Intentar con motor gramatical mejorado
-        grammar_result = self._translate_with_grammar(text, source_lang, target_lang)
-        if grammar_result:
-            return grammar_result
-        
-        # 3. Intentar con NLLB para traducción contextual
+        # 2. Intentar con NLLB para traducción contextual
         if self.model_loaded:
             nllb_translation = self._translate_with_nllb(text, source_lang, target_lang)
             if nllb_translation and nllb_translation.lower() != text.lower():
@@ -251,7 +222,7 @@ class AdvancedTranslationModel:
                     'translation': nllb_translation,
                     'method': 'nllb',
                     'confidence': 0.7 if self.model_type == 'base' else 0.85,
-                    'tried_methods': ['dictionary', 'grammar', 'nllb']
+                    'tried_methods': ['dictionary', 'nllb']
                 }
         
         # Fallback: devolver texto original
@@ -259,7 +230,7 @@ class AdvancedTranslationModel:
             'translation': text,
             'method': 'fallback',
             'confidence': 0.1,
-            'tried_methods': ['dictionary', 'grammar', 'nllb']
+            'tried_methods': ['dictionary', 'nllb']
         }
     
     def get_model_info(self):
@@ -268,7 +239,6 @@ class AdvancedTranslationModel:
             'nllb_loaded':            self.model_loaded,
             'model_type':             getattr(self, 'model_type', 'unknown'),
             'dictionary_entries':     len(self.dictionary),
-            'grammar_engine_loaded':  self.grammar_engine is not None,
             'device':                 str(self.device) if self.model_loaded else 'N/A',
             'finetuned_available':    os.path.exists('models/nllb-finetuned') and
                                       bool(os.listdir('models/nllb-finetuned')),

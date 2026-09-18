@@ -1,32 +1,31 @@
-"""Repositorio para operaciones de archivos multimedia."""
+"""Repositorio de archivos multimedia almacenados en el filesystem."""
 
 from __future__ import annotations
 
-from sqlalchemy import select
-
-from entities.models import MediaItem
+import os
 
 
 class MediaRepository:
-    """Encapsula acceso a `media_items`."""
+    """Mantiene media fuera de la BD porque schema.sql no define una tabla para ella."""
 
     def __init__(self, session):
-        self.session = session
+        self.root = os.path.join("static", "uploads")
 
     def get_media(self, media_type: str, tag: str | None = None) -> list:
-        """Obtener lista de medios filtrando opcionalmente por etiqueta."""
-        stmt = select(MediaItem).where(MediaItem.media_type == media_type)
-        if tag:
-            stmt = stmt.where(MediaItem.tag == tag)
-        stmt = stmt.order_by(MediaItem.created_at)
+        """Listar archivos existentes; ``tag`` se conserva por compatibilidad."""
+        folder_name = "images" if media_type == "image" else "audio"
+        folder = os.path.join(self.root, folder_name)
+        if not os.path.isdir(folder):
+            return []
+        return [
+            {
+                "filename": filename,
+                "url": f"/static/uploads/{folder_name}/{filename}",
+            }
+            for filename in sorted(os.listdir(folder))
+            if os.path.isfile(os.path.join(folder, filename))
+        ]
 
-        rows = self.session.execute(stmt).scalars().all()
-        return [{"filename": row.filename, "url": row.url} for row in rows]
-
-    def add_media(self, media_type: str, filename: str, url: str, tag: str = "") -> int:
-        """Persistir archivo multimedia y retornar su identificador."""
-        item = MediaItem(media_type=media_type, filename=filename, url=url, tag=tag)
-        self.session.add(item)
-        self.session.commit()
-        self.session.refresh(item)
-        return item.id
+    def add_media(self, media_type: str, filename: str, url: str, tag: str = "") -> str:
+        """Confirmar el nombre del archivo ya guardado por el servicio."""
+        return filename

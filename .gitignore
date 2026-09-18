@@ -9,3 +9,5 @@ __pycache__/
 *.pyd
 __init__.py
 tests/
+schema.sql
+.idea/

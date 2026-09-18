@@ -1,8 +1,13 @@
-"""Servicio para la lógica de traducción y gestión del modelo."""
+"""
+Servicio de traducción independiente de idiomas concretos.
+
+La capa HTTP solo proporciona texto y códigos. Este servicio rechaza entradas
+malformadas, evita direcciones idénticas y deja que el modelo consulte el
+catálogo persistido. No mantiene una lista de idiomas permitidos porque esa
+lista pertenece a ``languages`` y puede cambiar sin desplegar código nuevo.
+"""
 
 from __future__ import annotations
-
-import os
 
 from translation_model import AdvancedTranslationModel
 
@@ -16,8 +21,7 @@ class TranslationService:
     def _get_model(self) -> AdvancedTranslationModel:
         """Inicializar el modelo bajo demanda para reducir tiempo de arranque."""
         if self._translation_model is None:
-            dictionary_path = os.path.join("data", "nasa_yuwe_dictionary.json")
-            self._translation_model = AdvancedTranslationModel(dictionary_path)
+            self._translation_model = AdvancedTranslationModel()
         return self._translation_model
 
     def reset_model(self) -> None:
@@ -26,25 +30,30 @@ class TranslationService:
 
     def translate_text(self, text: str, source_lang: str, target_lang: str) -> dict:
         """Aplicar reglas de validación y ejecutar traducción."""
-        if not text:
+        if not isinstance(text, str) or not text.strip():
             return {"ok": False, "status_code": 400, "payload": {"error": "No se proporcionó texto para traducir"}}
 
-        if source_lang == target_lang:
+        if not isinstance(source_lang, str) or not isinstance(target_lang, str):
+            return {
+                "ok": False,
+                "status_code": 400,
+                "payload": {"error": "Los códigos de idioma deben ser texto"},
+            }
+
+        source_lang = source_lang.strip()
+        target_lang = target_lang.strip()
+        if source_lang.casefold() == target_lang.casefold():
             return {
                 "ok": False,
                 "status_code": 400,
                 "payload": {"error": "El idioma de origen y destino no pueden ser iguales"},
             }
 
-        supported = {
-            ("spanish", "nasa_yuwe"),
-            ("nasa_yuwe", "spanish"),
-        }
-        if (source_lang, target_lang) not in supported:
+        if not source_lang or not target_lang:
             return {
                 "ok": False,
                 "status_code": 400,
-                "payload": {"error": "Solo se admite traducción entre Español y Nasa Yuwe"},
+                "payload": {"error": "Debe indicar los idiomas de origen y destino"},
             }
 
         result = self._get_model().translate(text, source_lang, target_lang)

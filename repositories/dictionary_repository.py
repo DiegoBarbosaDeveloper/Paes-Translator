@@ -1,136 +1,213 @@
-"""Repositorio para operaciones del diccionario sobre la entidad DictionaryEntry."""
+"""
+Repositorio de pares lingüísticos respaldado por ``language_pair``.
+
+Este módulo traduce las operaciones de alto nivel de la aplicación a
+consultas SQLAlchemy. La tabla guarda identificadores de idiomas, no nombres,
+por lo que cada operación resuelve los códigos contra ``languages``. Así se
+pueden añadir idiomas desde la base de datos sin cambiar el código de negocio.
+
+El esquema usa identificadores obligatorios sin autoincremento. Las escrituras
+validan los datos, usan el siguiente identificador disponible y convierten los
+errores de integridad en resultados controlados para que una solicitud no deje
+la sesión ORM en estado inválido.
+"""
 
 from __future__ import annotations
 
-from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
+from datetime import datetime
 
-from entities.models import DictionaryEntry
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+
+from entities.models import Dataset, Language, LanguagePair
 
 
 class DictionaryRepository:
-    """Encapsula consultas y mutaciones de `dictionary`."""
+    """Consulta y modifica pares para cualquier idioma registrado."""
 
     def __init__(self, session):
         self.session = session
 
-    def get_all_dictionary(self) -> dict:
-        """Retornar entradas en formato legacy para compatibilidad con módulos existentes."""
-        rows = self.session.execute(
-            select(
-                DictionaryEntry.spanish_word,
-                DictionaryEntry.traduccion,
-                DictionaryEntry.explanation,
-                DictionaryEntry.estado,
+    @staticmethod
+    def _normalize(value: str) -> str:
+        """Normalizar valores externos antes de usarlos en consultas."""
+        if not isinstance(value, str):
+            return ""
+        return value.strip().casefold()
+
+    def _language_id(self, language: str) -> int | None:
+        normalized = self._normalize(language)
+        if not normalized:
+            return None
+        return self.session.execute(
+            select(Language.id).where(
+                (func.lower(Language.code) == normalized)
+                | (func.lower(Language.name) == normalized),
+                func.lower(Language.active).notin_(["0", "false", "inactive", "inactivo"]),
             )
-        ).all()
+        ).scalar_one_or_none()
+
+    def _dataset_id(self) -> int | None:
+        return self.session.execute(
+            select(Dataset.id)
+            .where(func.lower(Dataset.status).in_(["active", "activo"]))
+            .order_by(Dataset.id)
+        ).scalar_one_or_none()
+
+    def _next_id(self) -> int:
+        current = self.session.execute(select(func.max(LanguagePair.id))).scalar_one()
+        return (current or 0) + 1
+
+    def _query_pairs(self, source_language: str, target_language: str):
+        source_id = self._language_id(source_language)
+        target_id = self._language_id(target_language)
+        if source_id is None or target_id is None:
+            return None
+        return select(LanguagePair).where(
+            LanguagePair.source_language_id == source_id,
+            LanguagePair.target_language_id == target_id,
+        )
+
+    def _find_pair(self, source_text: str, source_language: str, target_language: str):
+        """Resolver un par concreto después de validar su dirección."""
+        normalized_text = self._normalize(source_text)
+        query = self._query_pairs(source_language, target_language)
+        if not normalized_text or query is None:
+            return None
+        return self.session.execute(
+            query.where(func.lower(LanguagePair.source_text) == normalized_text)
+        ).scalar_one_or_none()
+
+    def get_languages(self) -> list[dict]:
+        """Retornar el catálogo de idiomas disponible para la interfaz."""
+        rows = self.session.execute(
+            select(Language)
+            .where(func.lower(Language.active).notin_(
+                ["0", "false", "inactive", "inactivo"]
+            ))
+            .order_by(Language.name)
+        ).scalars().all()
+        return [{"id": row.id, "code": row.code, "name": row.name, "active": row.active} for row in rows]
+
+    def get_dictionary(self, source_language: str, target_language: str) -> dict:
+        """Retornar pares de texto para cualquier dirección registrada."""
+        query = self._query_pairs(source_language, target_language)
+        if query is None:
+            return {}
+        rows = self.session.execute(query.order_by(LanguagePair.id)).scalars().all()
         return {
-            row.spanish_word: {
-                "traduccion": row.traduccion,
-                "explanation": row.explanation or "",
-                "estado": row.estado or "No Verificado",
+            row.source_text: {
+                "target_text": row.target_text,
+                "validation_status": row.validation_status,
             }
             for row in rows
         }
 
-    def get_word(self, spanish_word: str):
-        """Buscar palabra exacta ignorando mayúsculas/minúsculas."""
-        row = self.session.execute(
-            select(DictionaryEntry).where(func.lower(DictionaryEntry.spanish_word) == spanish_word.lower())
-        ).scalar_one_or_none()
+    def get_training_pairs(self) -> list[dict]:
+        """Retornar todos los pares con sus códigos de idioma."""
+        source = Language.__table__.alias("source_language")
+        target = Language.__table__.alias("target_language")
+        rows = self.session.execute(
+            select(
+                LanguagePair.source_text,
+                LanguagePair.target_text,
+                source.c.code.label("source_lang"),
+                target.c.code.label("target_lang"),
+            )
+            .join(source, source.c.id == LanguagePair.source_language_id)
+            .join(target, target.c.id == LanguagePair.target_language_id)
+            .order_by(LanguagePair.id)
+        ).all()
+        return [
+            {
+                "source": row.source_text,
+                "target": row.target_text,
+                "source_lang": row.source_lang,
+                "target_lang": row.target_lang,
+            }
+            for row in rows
+        ]
+
+    def get_word(self, source_text: str, source_language: str, target_language: str):
+        """Buscar texto exacto ignorando mayúsculas/minúsculas."""
+        row = self._find_pair(source_text, source_language, target_language)
         if row is None:
             return None
         return {
-            "spanish_word": row.spanish_word,
-            "traduccion": row.traduccion,
-            "explanation": row.explanation,
-            "estado": row.estado,
+            "source_text": row.source_text,
+            "target_text": row.target_text,
+            "validation_status": row.validation_status,
         }
 
-    def count_entries(self) -> int:
-        """Contar número de entradas disponibles."""
-        return self.session.execute(select(func.count(DictionaryEntry.id))).scalar_one()
+    def count_entries(self, source_language: str, target_language: str) -> int:
+        """Contar pares de una dirección."""
+        query = self._query_pairs(source_language, target_language)
+        if query is None:
+            return 0
+        return self.session.execute(select(func.count()).select_from(query.subquery())).scalar_one()
 
-    def add_word(
-        self,
-        spanish_word: str,
-        traduccion: str,
-        explanation: str = "",
-        estado: str = "No Verificado",
-    ) -> bool:
-        """Insertar palabra y retornar True si fue persistida."""
-        entity = DictionaryEntry(
-            spanish_word=spanish_word,
-            traduccion=traduccion,
-            explanation=explanation,
-            estado=estado,
+    def add_word(self, source_text: str, target_text: str, source_language: str, target_language: str, validation_status: str | None = None) -> bool:
+        """Insertar un par usando un dataset y dos idiomas ya existentes."""
+        source_text = source_text.strip() if isinstance(source_text, str) else ""
+        target_text = target_text.strip() if isinstance(target_text, str) else ""
+        if not source_text or not target_text:
+            return False
+        source_id = self._language_id(source_language)
+        target_id = self._language_id(target_language)
+        dataset_id = self._dataset_id()
+        if source_id is None or target_id is None or dataset_id is None:
+            return False
+
+        entity = LanguagePair(
+            id=self._next_id(),
+            dataset_id=dataset_id,
+            source_language_id=source_id,
+            target_language_id=target_id,
+            source_text=source_text,
+            target_text=target_text,
+            validation_status=validation_status,
+            created_at=datetime.utcnow(),
         )
         self.session.add(entity)
         try:
             self.session.commit()
             return True
-        except IntegrityError:
+        except (IntegrityError, SQLAlchemyError):
             self.session.rollback()
             return False
 
-    def update_word(
-        self,
-        spanish_word: str,
-        traduccion: str | None = None,
-        explanation: str | None = None,
-        estado: str | None = None,
-    ) -> bool:
-        """Actualizar una palabra existente usando campos opcionales."""
-        row = self.session.execute(
-            select(DictionaryEntry).where(func.lower(DictionaryEntry.spanish_word) == spanish_word.lower())
-        ).scalar_one_or_none()
+    def update_word(self, source_text: str, source_language: str, target_language: str, target_text: str | None = None, validation_status: str | None = None) -> bool:
+        """Actualizar un par existente."""
+        row = self._find_pair(source_text, source_language, target_language)
         if row is None:
             return False
-
-        if traduccion is not None:
-            row.traduccion = traduccion
-        if explanation is not None:
-            row.explanation = explanation
-        if estado is not None:
-            row.estado = estado
-
-        self.session.commit()
-        return True
-
-    def upsert_word(
-        self,
-        spanish_word: str,
-        traduccion: str,
-        explanation: str = "",
-        estado: str = "No Verificado",
-    ) -> None:
-        """Insertar o actualizar una palabra según su existencia."""
-        row = self.session.execute(
-            select(DictionaryEntry).where(func.lower(DictionaryEntry.spanish_word) == spanish_word.lower())
-        ).scalar_one_or_none()
-        if row is None:
-            row = DictionaryEntry(
-                spanish_word=spanish_word,
-                traduccion=traduccion,
-                explanation=explanation,
-                estado=estado,
-            )
-            self.session.add(row)
-        else:
-            row.traduccion = traduccion
-            row.explanation = explanation
-            row.estado = estado
-
-        self.session.commit()
-
-    def delete_word(self, spanish_word: str) -> bool:
-        """Eliminar palabra por clave en español."""
-        row = self.session.execute(
-            select(DictionaryEntry).where(func.lower(DictionaryEntry.spanish_word) == spanish_word.lower())
-        ).scalar_one_or_none()
-        if row is None:
+        if target_text is not None:
+            row.target_text = target_text
+        if validation_status is not None:
+            row.validation_status = validation_status
+        try:
+            self.session.commit()
+            return True
+        except SQLAlchemyError:
+            self.session.rollback()
             return False
 
+    def upsert_word(self, source_text: str, target_text: str, source_language: str, target_language: str, validation_status: str | None = None) -> None:
+        """Insertar o actualizar un par."""
+        if self.get_word(source_text, source_language, target_language) is None:
+            self.add_word(source_text, target_text, source_language, target_language, validation_status)
+            return
+        self.update_word(source_text, source_language, target_language, target_text, validation_status)
+
+    def delete_word(self, source_text: str, source_language: str, target_language: str) -> bool:
+        """Eliminar un par."""
+        row = self._find_pair(source_text, source_language, target_language)
+        if row is None:
+            return False
         self.session.delete(row)
-        self.session.commit()
-        return True
+        try:
+            self.session.commit()
+            return True
+        except SQLAlchemyError:
+            self.session.rollback()
+            return False

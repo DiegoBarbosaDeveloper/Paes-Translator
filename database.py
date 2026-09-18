@@ -39,32 +39,58 @@ class Database:
         self.media_repository = MediaRepository(self.session)
         logger.info("Conexión ORM inicializada")
 
-    def get_all_dictionary(self) -> dict:
-        return self.dictionary_repository.get_all_dictionary()
+    def get_languages(self) -> list[dict]:
+        return self.dictionary_repository.get_languages()
 
-    def get_word(self, spanish_word: str):
-        return self.dictionary_repository.get_word(spanish_word)
+    def get_dictionary(self, source_language: str, target_language: str) -> dict:
+        return self.dictionary_repository.get_dictionary(source_language, target_language)
 
-    def count_entries(self) -> int:
-        return self.dictionary_repository.count_entries()
+    def get_training_pairs(self) -> list[dict]:
+        return self.dictionary_repository.get_training_pairs()
 
-    def add_word(self, spanish_word: str, traduccion: str, explanation: str = "", estado: str = "No Verificado"):
-        return self.dictionary_repository.add_word(spanish_word, traduccion, explanation, estado)
+    def get_word(self, source_text: str, source_language: str, target_language: str):
+        return self.dictionary_repository.get_word(source_text, source_language, target_language)
+
+    def count_entries(self, source_language: str, target_language: str) -> int:
+        return self.dictionary_repository.count_entries(source_language, target_language)
+
+    def add_word(self, source_text: str, target_text: str, source_language: str, target_language: str, validation_status: str | None = None):
+        return self.dictionary_repository.add_word(source_text, target_text, source_language, target_language, validation_status)
 
     def update_word(
         self,
-        spanish_word: str,
-        traduccion: str | None = None,
-        explanation: str | None = None,
-        estado: str | None = None,
+        source_text: str,
+        source_language: str,
+        target_language: str,
+        target_text: str | None = None,
+        validation_status: str | None = None,
     ):
-        return self.dictionary_repository.update_word(spanish_word, traduccion, explanation, estado)
+        return self.dictionary_repository.update_word(
+            source_text,
+            source_language,
+            target_language,
+            target_text,
+            validation_status,
+        )
 
-    def upsert_word(self, spanish_word: str, traduccion: str, explanation: str = "", estado: str = "No Verificado"):
-        self.dictionary_repository.upsert_word(spanish_word, traduccion, explanation, estado)
+    def upsert_word(
+        self,
+        source_text: str,
+        target_text: str,
+        source_language: str,
+        target_language: str,
+        validation_status: str | None = None,
+    ):
+        self.dictionary_repository.upsert_word(
+            source_text,
+            target_text,
+            source_language,
+            target_language,
+            validation_status,
+        )
 
-    def delete_word(self, spanish_word: str):
-        return self.dictionary_repository.delete_word(spanish_word)
+    def delete_word(self, source_text: str, source_language: str, target_language: str):
+        return self.dictionary_repository.delete_word(source_text, source_language, target_language)
 
     def get_media(self, media_type: str, tag: str | None = None):
         return self.media_repository.get_media(media_type, tag)

@@ -8,8 +8,10 @@ la aplicación del motor de base de datos concreto.
 from __future__ import annotations
 
 import os
+import re
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import scoped_session, sessionmaker
 
 
@@ -34,6 +36,33 @@ def get_engine():
             future=True,
         )
     return _engine
+
+
+def ensure_database_exists() -> None:
+    """
+    Crear la base configurada cuando el servidor la conoce pero aún no existe.
+
+    ``Base.metadata.create_all`` solo crea tablas dentro de una base ya
+    existente; no puede solucionar un error de MySQL del tipo ``Unknown
+    database``. Para ese caso se abre una conexión temporal al servidor sin
+    seleccionar base y se ejecuta ``CREATE DATABASE IF NOT EXISTS``. La
+    operación solo se aplica a dialectos MySQL/MariaDB y nunca intenta crear
+    usuarios ni conceder permisos, porque esas tareas pertenecen al
+    administrador de la instancia.
+    """
+    url = make_url(get_database_url())
+    if url.get_backend_name() not in {"mysql", "mariadb"} or not url.database:
+        return
+
+    if not re.fullmatch(r"[A-Za-z0-9_$-]+", url.database):
+        raise ValueError("El nombre de la base de datos contiene caracteres no permitidos")
+
+    server_engine = create_engine(url.set(database=None), pool_pre_ping=True, future=True)
+    try:
+        with server_engine.begin() as connection:
+            connection.execute(text(f"CREATE DATABASE IF NOT EXISTS `{url.database}`"))
+    finally:
+        server_engine.dispose()
 
 
 def get_session_factory():

@@ -10,7 +10,6 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 
 MODEL_BASE_PATH      = os.path.join(BASE_DIR, "models", "nllb-200-distilled-600M")
 MODEL_FINETUNED_PATH = os.path.join(BASE_DIR, "models", "nllb-finetuned")
-DICTIONARY_PATH      = os.path.join(BASE_DIR, "data", "nasa_yuwe_dictionary.json")
 TRAINING_PAIRS_PATH  = os.path.join(BASE_DIR, "data", "training_pairs.json")
 TRAINING_STATUS_PATH = os.path.join(BASE_DIR, "data", "training_status.json")
 DOWNLOAD_STATUS_PATH = os.path.join(BASE_DIR, "data", "download_status.json")
@@ -18,12 +17,6 @@ TRAINING_STOP_FLAG   = os.path.join(BASE_DIR, "data", "training_stop.flag")
 TRAINING_LOG_PATH    = os.path.join(BASE_DIR, "data", "training_log.txt")
 
 # ─── Identificadores de idioma NLLB ──────────────────────────────────────────
-# NLLB no tiene soporte nativo para Nasa Yuwe.
-# Estrategia: usar spa_Latn como idioma fuente y enseñar al modelo
-# a generar texto en Nasa Yuwe mediante fine-tuning supervisado.
-SOURCE_LANG_CODE = "spa_Latn"   # Español
-TARGET_LANG_CODE = "spa_Latn"   # Tratado como Nasa Yuwe (mismo script Latino)
-
 # ─── Hiperparámetros de entrenamiento ────────────────────────────────────────
 TRAINING_CONFIG = {
     # Épocas — con pocos datos, 5-10 épocas son suficientes

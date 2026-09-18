@@ -19,7 +19,6 @@ class BaseConfig:
         "mysql+pymysql://admin:admin123@localhost:3306/nasa_yuwe_translator",
     )
     JSON_SORT_KEYS = False
-    INIT_DB_ON_STARTUP = True
 
 
 class DevelopmentConfig(BaseConfig):

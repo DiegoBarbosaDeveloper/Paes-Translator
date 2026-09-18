@@ -1,7 +1,11 @@
 """
 Controlador principal de la API REST.
 
-Define endpoints HTTP y delega toda la lógica de negocio a la capa de servicios.
+Este módulo es una frontera de confianza: todo lo que llega por HTTP es dato
+externo y puede tener tipos, campos o valores inesperados. Los endpoints solo
+extraen objetos JSON válidos, validan los campos mínimos y delegan la decisión
+de negocio en los servicios. No acceden directamente al ORM, de modo que los
+errores de persistencia y las reglas multilingües permanecen centralizados.
 """
 
 from __future__ import annotations
@@ -17,20 +21,53 @@ def _service(name: str):
     return current_app.config["services"][name]
 
 
+def _json_object():
+    """Obtener un objeto JSON o devolver ``None`` para responder con 400."""
+    data = request.get_json(silent=True)
+    return data if isinstance(data, dict) else None
+
+
+def _text_field(data: dict, name: str) -> str:
+    """Leer un campo textual sin permitir que tipos inesperados rompan la API."""
+    value = data.get(name, "")
+    return value.strip() if isinstance(value, str) else ""
+
+
 @api_bp.route("/")
 def index():
     """Renderizar interfaz principal."""
     return render_template("index.html")
 
 
+@api_bp.route("/api/languages", methods=["GET"])
+def get_languages():
+    """
+    Exponer el catálogo activo que gobierna toda la interfaz.
+
+    El frontend no debe conocer códigos ni nombres de idiomas por adelantado:
+    los recibe de esta ruta y los reenvía en cada operación de traducción,
+    alta o retroalimentación. Así la configuración de la base controla el
+    comportamiento disponible sin editar plantillas ni JavaScript.
+    """
+    try:
+        return jsonify(_service("dictionary").get_languages())
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 @api_bp.route("/api/translate-text", methods=["POST"])
 def translate_text_endpoint():
-    """Endpoint de traducción textual entre Español y Nasa Yuwe."""
+    """Endpoint de traducción textual entre dos idiomas configurados."""
     try:
-        data = request.get_json() or {}
-        text = data.get("text", "").strip()
-        source_lang = data.get("source_lang", "spanish")
-        target_lang = data.get("target_lang", "nasa_yuwe")
+        data = _json_object()
+        if data is None:
+            return jsonify({"error": "El cuerpo debe ser un objeto JSON válido"}), 400
+        text = _text_field(data, "text")
+        source_lang = _text_field(data, "source_lang")
+        target_lang = _text_field(data, "target_lang")
+
+        if not text or not source_lang or not target_lang:
+            return jsonify({"error": "Texto e idiomas son obligatorios"}), 400
 
         result = _service("translation").translate_text(text, source_lang, target_lang)
         return jsonify(result["payload"]), result["status_code"]
@@ -85,15 +122,18 @@ def media_list():
 def add_word():
     """Agregar una nueva palabra al diccionario."""
     try:
-        data = request.get_json() or {}
-        spanish_word = data.get("spanish_word", "").strip()
-        nasa_yuwe_translation = data.get("nasa_yuwe_translation", "").strip()
-        context = data.get("context", "").strip()
+        data = _json_object()
+        if data is None:
+            return jsonify({"error": "El cuerpo debe ser un objeto JSON válido"}), 400
+        source_text = _text_field(data, "source_text")
+        target_text = _text_field(data, "target_text")
+        source_lang = _text_field(data, "source_lang")
+        target_lang = _text_field(data, "target_lang")
 
-        if not spanish_word or not nasa_yuwe_translation or not context:
+        if not source_text or not target_text or not source_lang or not target_lang:
             return jsonify({"error": "Todos los campos son obligatorios"}), 400
 
-        result = _service("dictionary").add_word(spanish_word, nasa_yuwe_translation, context)
+        result = _service("dictionary").add_word(source_text, target_text, source_lang, target_lang)
         return jsonify(result["payload"]), result["status_code"]
     except Exception as exc:
         return jsonify({"error": f"Error al agregar la palabra: {str(exc)}"}), 500
@@ -103,21 +143,25 @@ def add_word():
 def receive_feedback():
     """Recibir retroalimentación de traducciones para mejora continua."""
     try:
-        data = request.get_json() or {}
-        original_text = data.get("original_text", "").strip()
-        corrected_translation = data.get("corrected_translation", "").strip()
-        source_lang = data.get("source_lang", "spanish")
-        target_lang = data.get("target_lang", "nasa_yuwe")
+        data = _json_object()
+        if data is None:
+            return jsonify({"error": "El cuerpo debe ser un objeto JSON válido"}), 400
+        original_text = _text_field(data, "original_text")
+        corrected_translation = _text_field(data, "corrected_translation")
+        source_lang = _text_field(data, "source_lang")
+        target_lang = _text_field(data, "target_lang")
 
-        if not original_text or not corrected_translation:
-            return jsonify({"error": "Se requiere texto original y traducción corregida"}), 400
+        if not original_text or not corrected_translation or not source_lang or not target_lang:
+            return jsonify({"error": "Texto, corrección e idiomas son obligatorios"}), 400
 
-        _service("dictionary").process_feedback(
+        persisted = _service("dictionary").process_feedback(
             original_text,
             corrected_translation,
             source_lang,
             target_lang,
         )
+        if not persisted:
+            return jsonify({"error": "No se pudo guardar la retroalimentación"}), 503
         return jsonify({"status": "success", "message": "Retroalimentación guardada exitosamente"})
     except Exception as exc:
         return jsonify({"error": f"Error al procesar la retroalimentación: {str(exc)}"}), 500

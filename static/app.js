@@ -1,9 +1,41 @@
 // ═══════════════════════════════════════════════════════════════
-//  NasaYuwe Translator — app.js
+//  Paes Translator — app.js
 // ═══════════════════════════════════════════════════════════════
 
 let recognition = null, isRecording = false, recordingTimer = null, recordingStart = null;
 let trainingPollInterval = null, downloadPollInterval = null, trainingLogLines = [];
+
+async function loadLanguages() {
+    try {
+        const response = await fetch('/api/languages');
+        const languages = await response.json();
+        const selectors = [document.getElementById('sourceLanguage'), document.getElementById('targetLanguage')];
+        selectors.forEach(selector => {
+            if (!selector) return;
+            selector.innerHTML = '';
+            languages.filter(language => String(language.active).toLowerCase() !== '0' && String(language.active).toLowerCase() !== 'false')
+                .forEach(language => {
+                    const option = document.createElement('option');
+                    option.value = language.code;
+                    option.textContent = language.name;
+                    selector.appendChild(option);
+                });
+        });
+        if (selectors[1]?.options.length > 1) selectors[1].selectedIndex = 1;
+        updateLanguageLabels();
+    } catch (error) {
+        showError('No se pudo cargar el catálogo de idiomas');
+    }
+}
+
+function updateLanguageLabels() {
+    const source = document.getElementById('sourceLanguage');
+    const target = document.getElementById('targetLanguage');
+    const sourceLabel = document.getElementById('srcLangLabel');
+    const targetLabel = document.getElementById('tgtLangLabel');
+    if (sourceLabel) sourceLabel.textContent = source?.selectedOptions[0]?.textContent || 'Origen';
+    if (targetLabel) targetLabel.textContent = target?.selectedOptions[0]?.textContent || 'Destino';
+}
 
 // ── NAVIGATION ────────────────────────────────────────────────
 
@@ -84,10 +116,7 @@ async function doTranslate() {
         document.getElementById('feedbackSection').classList.remove('hidden');
 
         // Update lang labels
-        const srcLabel = src === 'spanish' ? '🇨🇴 Español' : '🌿 Nasa Yuwe';
-        const tgtLabel = tgt === 'spanish' ? '🇨🇴 Español' : '🌿 Nasa Yuwe';
-        document.getElementById('srcLangLabel').textContent = srcLabel;
-        document.getElementById('tgtLangLabel').textContent = tgtLabel;
+        updateLanguageLabels();
 
     } catch(e) {
         showError('Error de conexión al traducir');
@@ -102,7 +131,8 @@ function initSpeech() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { showError('Tu navegador no soporta reconocimiento de voz. Usa Chrome o Edge.'); return false; }
     recognition = new SR();
-    recognition.continuous = true; recognition.interimResults = true; recognition.lang = 'es-CO';
+    recognition.continuous = true; recognition.interimResults = true;
+    recognition.lang = document.getElementById('sourceLanguage')?.value || navigator.language;
     recognition.onstart = () => setVoiceUI(true);
     recognition.onend   = () => { if (isRecording) stopRecording(); };
     recognition.onerror = e => { showError('Error de voz: ' + e.error); stopRecording(); };
@@ -166,25 +196,26 @@ function setVoiceUI(active) {
 // ── ADD WORD ──────────────────────────────────────────────────
 
 async function addNewWord() {
-    const spanish   = document.getElementById('spanishWord').value.trim();
-    const nasa      = document.getElementById('nasaYuweTranslation').value.trim();
-    const context   = document.getElementById('wordContext').value.trim();
+    const sourceText = document.getElementById('sourceText').value.trim();
+    const targetText = document.getElementById('targetText').value.trim();
+    const sourceLang = document.getElementById('sourceLanguage').value;
+    const targetLang = document.getElementById('targetLanguage').value;
     const statusEl  = document.getElementById('addWordStatus');
 
-    if (!spanish || !nasa || !context) {
+    if (!sourceText || !targetText || !sourceLang || !targetLang) {
         showToast(statusEl, 'Por favor complete todos los campos.', 'error'); return;
     }
     try {
         const res  = await fetch('/add_word', {
             method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ spanish_word: spanish, nasa_yuwe_translation: nasa, context })
+            body: JSON.stringify({ source_text: sourceText, target_text: targetText, source_lang: sourceLang, target_lang: targetLang })
         });
         const data = await res.json();
         if (res.ok) {
-            document.getElementById('spanishWord').value = '';
-            document.getElementById('nasaYuweTranslation').value = '';
+            document.getElementById('sourceText').value = '';
+            document.getElementById('targetText').value = '';
             document.getElementById('wordContext').value = '';
-            showToast(statusEl, `✓ "${spanish}" agregado al diccionario`, 'success');
+            showToast(statusEl, 'Par lingüístico agregado al diccionario', 'success');
             rebuildDatasetSilently();
         } else {
             showToast(statusEl, data.error || 'Error al agregar', 'error');
@@ -476,6 +507,7 @@ function setPill(id, text, active) {
 // ── INIT ──────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
+    loadLanguages();
     // Theme
     const saved = localStorage.getItem('theme') || 'dark';
     applyTheme(saved);

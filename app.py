@@ -30,9 +30,8 @@ def create_app(environment: str | None = None) -> Flask:
     # Sincronizar variable para el subsistema ORM desacoplado.
     os.environ["DATABASE_URL"] = app.config["DATABASE_URL"]
 
-    # Inicializar esquema de base de datos (tablas)
-    if app.config.get("INIT_DB_ON_STARTUP", True):
-        init_db()
+    # El ORM provisiona la base/tablas ausentes y valida el resultado.
+    init_db()
 
     # Construir contenedor de servicios con una sesión compartida.
     session = get_session_factory()
