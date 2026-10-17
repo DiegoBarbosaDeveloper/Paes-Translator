@@ -118,15 +118,16 @@
                         Limpiar
                     </button>
                     <button type="button" id="translateText" class="primary-btn" aria-label="Traducir">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M5 3l14 9-14 9V3z"/></svg>
-                        Traducir
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M5 3l14 9-14 9V3z"/></svg>
+                        <span class="btn-spinner hidden" id="translateSpinner" aria-hidden="true"></span>
+                        <span id="translateBtnLabel">Traducir</span>
                     </button>
                 </div>
             </div>
 
             <!-- Divider -->
             <div class="panel-divider">
-                <progress id="translationProgress" class="translate-progress hidden" value="0" max="100"></progress>
+                <progress id="translationProgress" class="translate-progress hidden" max="100"></progress>
                 <div class="divider-arrow">→</div>
             </div>
 

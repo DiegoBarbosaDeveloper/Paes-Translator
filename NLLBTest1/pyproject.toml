@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "santoto-translator"
+version = "0.1.0"
+description = "Spanish <-> Piapoco/Achagua translator fine-tuned on NLLB"
+requires-python = ">=3.10"
+
+[project.scripts]
+santoto-translator = "src.cli:main"
+
+[tool.setuptools]
+packages = ["src"]

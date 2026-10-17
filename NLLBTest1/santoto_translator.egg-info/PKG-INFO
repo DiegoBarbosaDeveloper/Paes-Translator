@@ -1,0 +1,5 @@
+Metadata-Version: 2.4
+Name: santoto-translator
+Version: 0.1.0
+Summary: Spanish <-> Piapoco/Achagua translator fine-tuned on NLLB
+Requires-Python: >=3.10

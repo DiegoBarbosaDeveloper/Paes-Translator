@@ -85,7 +85,22 @@ function applyTheme(t) {
 
 // ── TRANSLATION ───────────────────────────────────────────────
 
+function setTranslateLoading(loading) {
+    const btn     = document.getElementById('translateText');
+    const label   = document.getElementById('translateBtnLabel');
+    const spinner = document.getElementById('translateSpinner');
+    if (btn) {
+        btn.disabled = loading;
+        btn.classList.toggle('loading', loading);
+        btn.setAttribute('aria-busy', loading ? 'true' : 'false');
+    }
+    if (label)   label.textContent = loading ? 'Traduciendo...' : 'Traducir';
+    if (spinner) spinner.classList.toggle('hidden', !loading);
+}
+
 async function doTranslate() {
+    const btn  = document.getElementById('translateText');
+    if (btn && btn.disabled) return;
     const text = document.getElementById('inputText').value.trim();
     const src  = document.getElementById('sourceLanguage').value;
     const tgt  = document.getElementById('targetLanguage').value;
@@ -93,6 +108,7 @@ async function doTranslate() {
     if (src === tgt) { showError('Los idiomas de origen y destino no pueden ser iguales'); return; }
 
     clearError();
+    setTranslateLoading(true);
     document.getElementById('translationProgress').classList.remove('hidden');
 
     try {
@@ -122,6 +138,7 @@ async function doTranslate() {
         showError('Error de conexión al traducir');
     } finally {
         document.getElementById('translationProgress').classList.add('hidden');
+        setTranslateLoading(false);
     }
 }
 

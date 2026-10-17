@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BIGINT, DATETIME, FLOAT, VARCHAR, ForeignKey, inspect
+from sqlalchemy import BIGINT, DATETIME, FLOAT, VARCHAR, ForeignKey, func, inspect, select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -263,3 +263,45 @@ def init_db() -> None:
             ) from error
         raise
     validate_schema()
+
+
+def seed_defaults() -> None:
+    """
+    Insertar los idiomas soportados por el adaptador NLLB y un dataset activo
+    cuando las tablas están vacías, para que el desplegable de la interfaz
+    siempre tenga opciones de traducción.
+    """
+    from infrastructure.db import get_session
+
+    session = get_session()
+    try:
+        language_count = session.execute(
+            select(func.count()).select_from(Language)
+        ).scalar_one()
+        if language_count == 0:
+            session.add_all([
+                Language(id=1, code="es", name="Español", active="true"),
+                Language(id=2, code="piapoco", name="Piapoco", active="true"),
+                Language(id=3, code="achagua", name="Achagua", active="true"),
+            ])
+
+        dataset_count = session.execute(
+            select(func.count()).select_from(Dataset)
+        ).scalar_one()
+        if dataset_count == 0:
+            session.add(
+                Dataset(
+                    id=1,
+                    name="default",
+                    version="1",
+                    description="Dataset inicial",
+                    status="active",
+                    created_at=datetime.utcnow(),
+                )
+            )
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()

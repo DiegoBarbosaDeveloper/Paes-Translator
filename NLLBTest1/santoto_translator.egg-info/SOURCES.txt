@@ -1,0 +1,16 @@
+pyproject.toml
+santoto_translator.egg-info/PKG-INFO
+santoto_translator.egg-info/SOURCES.txt
+santoto_translator.egg-info/dependency_links.txt
+santoto_translator.egg-info/entry_points.txt
+santoto_translator.egg-info/top_level.txt
+src/__init__.py
+src/build_pairs.py
+src/cli.py
+src/config.py
+src/console.py
+src/display.py
+src/files.py
+src/modeling.py
+src/train.py
+src/tui.py

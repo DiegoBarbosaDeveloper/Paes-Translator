@@ -195,6 +195,13 @@ body{
 }
 .primary-btn:hover:not(:disabled){background:#4f46e5;box-shadow:0 4px 14px var(--accent-glow);transform:translateY(-1px);}
 .primary-btn:disabled{opacity:.45;cursor:not-allowed;}
+.primary-btn.loading{cursor:progress;}
+.btn-spinner{
+  width:14px;height:14px;flex-shrink:0;border-radius:50%;
+  border:2px solid rgba(255,255,255,.35);border-top-color:#fff;
+  animation:btn-spin .7s linear infinite;
+}
+@keyframes btn-spin{to{transform:rotate(360deg);}}
 .secondary-btn{
   display:inline-flex;align-items:center;gap:.4rem;
   padding:.6rem 1.1rem;background:var(--surface2);color:var(--text);

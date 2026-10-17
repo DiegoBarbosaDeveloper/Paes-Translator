@@ -15,7 +15,7 @@ from flask import Flask
 
 from config import get_config
 from controllers.api_controller import api_bp
-from entities.models import init_db
+from entities.models import init_db, seed_defaults
 from infrastructure.db import get_session_factory, remove_session
 from services.container import build_services
 
@@ -32,6 +32,9 @@ def create_app(environment: str | None = None) -> Flask:
 
     # El ORM provisiona la base/tablas ausentes y valida el resultado.
     init_db()
+
+    # Sembrar idiomas por defecto cuando el catálogo está vacío.
+    seed_defaults()
 
     # Construir contenedor de servicios con una sesión compartida.
     session = get_session_factory()

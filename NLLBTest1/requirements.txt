@@ -1,0 +1,12 @@
+pandas
+numpy
+matplotlib
+transformers
+datasets
+accelerate
+sentencepiece
+sacrebleu
+peft
+scikit-learn
+jupyter
+prompt-toolkit

@@ -65,7 +65,7 @@ class TranslationService:
                 "status": "success",
                 "method": result["method"],
                 "confidence": result["confidence"],
-                "methods_tried": result.get("methods_tried", []),
+                "methods_tried": result.get("tried_methods", []),
             },
         }
 

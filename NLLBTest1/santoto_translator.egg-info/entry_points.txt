@@ -1,0 +1,2 @@
+[console_scripts]
+santoto-translator = src.cli:main

@@ -7,6 +7,9 @@ transformers
 torch
 tokenizers
 safetensors
+peft
+sentencepiece
+huggingface_hub
 
 # Dependencias para MySQL (XAMPP)
 PyMySQL
@@ -43,3 +46,16 @@ soundfile
 # Dependencias para compatibilidad
 six
 certifi
+
+pandas
+numpy
+matplotlib
+transformers
+datasets
+accelerate
+sentencepiece
+sacrebleu
+peft
+scikit-learn
+jupyter
+prompt-toolkit
