@@ -9,6 +9,11 @@ from __future__ import annotations
 
 import os
 
+from dotenv import load_dotenv
+
+# Cargar .env una sola vez al importar la configuración de la aplicación.
+load_dotenv()
+
 
 class BaseConfig:
     """Configuración base compartida por todos los ambientes."""
@@ -16,7 +21,7 @@ class BaseConfig:
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-me")
     DATABASE_URL = os.getenv(
         "DATABASE_URL",
-        "mysql+pymysql://admin:admin123@localhost:3306/nasa_yuwe_translator",
+        "postgresql+psycopg://admin:admin123@localhost:5432/postgres",
     )
     JSON_SORT_KEYS = False
 

@@ -1,5 +1,8 @@
 data/
 models/
+.env
+.env.local
+.env.*.local
 logs/
 *.docx
 .venv/

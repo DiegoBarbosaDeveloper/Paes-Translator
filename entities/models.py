@@ -7,9 +7,20 @@ del motor para facilitar migraciones de base de datos.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
-from sqlalchemy import BIGINT, DATETIME, FLOAT, VARCHAR, ForeignKey, func, inspect, select
+from sqlalchemy import (
+    BIGINT,
+    VARCHAR,
+    DateTime,
+    Float,
+    ForeignKey,
+    Identity,
+    Integer,
+    inspect,
+    text,
+)
+from sqlalchemy import types as sa_types
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -20,21 +31,26 @@ class Base(DeclarativeBase):
     """Clase base para todas las entidades ORM."""
 
 
+def _pk_type():
+    """Tipo de PK portable: BIGINT en PostgreSQL y INTEGER en SQLite."""
+    return BIGINT().with_variant(Integer(), "sqlite")
+
+
 class Dataset(Base):
     __tablename__ = "dataset"
 
-    id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=False)
+    id: Mapped[int] = mapped_column(_pk_type(), Identity(), primary_key=True)
     name: Mapped[str] = mapped_column(VARCHAR(255), nullable=False)
     version: Mapped[str] = mapped_column(VARCHAR(255), nullable=False)
     description: Mapped[str] = mapped_column(VARCHAR(255), nullable=False)
     status: Mapped[str] = mapped_column(VARCHAR(255), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DATETIME, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
 class Language(Base):
     __tablename__ = "languages"
 
-    id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=False)
+    id: Mapped[int] = mapped_column(_pk_type(), Identity(), primary_key=True)
     code: Mapped[str] = mapped_column(VARCHAR(255), nullable=False)
     name: Mapped[str] = mapped_column(VARCHAR(255), nullable=False)
     active: Mapped[str] = mapped_column(VARCHAR(255), nullable=False)
@@ -43,7 +59,7 @@ class Language(Base):
 class TranslationDirection(Base):
     __tablename__ = "translation_direction"
 
-    id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=False)
+    id: Mapped[int] = mapped_column(_pk_type(), Identity(), primary_key=True)
     source_language_id: Mapped[int] = mapped_column(
         BIGINT,
         ForeignKey("languages.id", name="fk_translation_direction_source_language_id"),
@@ -60,7 +76,7 @@ class TranslationDirection(Base):
 class LanguagePair(Base):
     __tablename__ = "language_pair"
 
-    id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=False)
+    id: Mapped[int] = mapped_column(_pk_type(), Identity(), primary_key=True)
     dataset_id: Mapped[int] = mapped_column(
         BIGINT,
         ForeignKey("dataset.id", name="fk_language_pair_dataset_id"),
@@ -79,14 +95,14 @@ class LanguagePair(Base):
     source_text: Mapped[str] = mapped_column(VARCHAR(255), nullable=False)
     target_text: Mapped[str] = mapped_column(VARCHAR(255), nullable=False)
     validation_status: Mapped[str | None] = mapped_column(VARCHAR(255), nullable=True)
-    validated_at: Mapped[datetime | None] = mapped_column(DATETIME, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DATETIME, nullable=False)
+    validated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
 class ModelVersion(Base):
     __tablename__ = "model_version"
 
-    id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=False)
+    id: Mapped[int] = mapped_column(_pk_type(), Identity(), primary_key=True)
     name: Mapped[str] = mapped_column(VARCHAR(255), nullable=False)
     version: Mapped[str] = mapped_column(VARCHAR(255), nullable=False)
     base_model: Mapped[str] = mapped_column(VARCHAR(255), nullable=False)
@@ -96,13 +112,13 @@ class ModelVersion(Base):
         nullable=False,
     )
     status: Mapped[str] = mapped_column(VARCHAR(255), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DATETIME, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
 class Evaluation(Base):
     __tablename__ = "evaluation"
 
-    id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=False)
+    id: Mapped[int] = mapped_column(_pk_type(), Identity(), primary_key=True)
     model_version_id: Mapped[int] = mapped_column(
         BIGINT,
         ForeignKey("model_version.id", name="fk_evaluation_model_version_id"),
@@ -118,16 +134,16 @@ class Evaluation(Base):
         ForeignKey("dataset.id", name="fk_evaluation_dataset_id"),
         nullable=False,
     )
-    bleu: Mapped[float] = mapped_column(FLOAT, nullable=False)
-    chr_f: Mapped[float] = mapped_column(FLOAT, nullable=False)
-    comet: Mapped[float] = mapped_column(FLOAT, nullable=False)
-    evaluation_date: Mapped[datetime] = mapped_column(DATETIME, nullable=False)
+    bleu: Mapped[float] = mapped_column(Float, nullable=False)
+    chr_f: Mapped[float] = mapped_column(Float, nullable=False)
+    comet: Mapped[float] = mapped_column(Float, nullable=False)
+    evaluation_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
 class HumanEvaluation(Base):
     __tablename__ = "human_evaluation"
 
-    id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=False)
+    id: Mapped[int] = mapped_column(_pk_type(), Identity(), primary_key=True)
     model_version_id: Mapped[int] = mapped_column(
         BIGINT,
         ForeignKey("model_version.id", name="fk_human_evaluation_model_version_id"),
@@ -139,10 +155,10 @@ class HumanEvaluation(Base):
         nullable=False,
     )
     sample_direction: Mapped[str] = mapped_column(VARCHAR(255), nullable=False)
-    adequacy_score: Mapped[float] = mapped_column(FLOAT, nullable=False)
-    fluency_score: Mapped[float] = mapped_column(FLOAT, nullable=False)
-    overall_score: Mapped[float] = mapped_column(FLOAT, nullable=False)
-    evaluation_date: Mapped[datetime] = mapped_column(DATETIME, nullable=False)
+    adequacy_score: Mapped[float] = mapped_column(Float, nullable=False)
+    fluency_score: Mapped[float] = mapped_column(Float, nullable=False)
+    overall_score: Mapped[float] = mapped_column(Float, nullable=False)
+    evaluation_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
 class SchemaValidationError(RuntimeError):
@@ -150,13 +166,31 @@ class SchemaValidationError(RuntimeError):
 
 
 def _type_signature(column_type):
-    """Reducir tipos SQLAlchemy a sus atributos estructurales comparables."""
-    return (
-        type(column_type).__name__.lower(),
-        getattr(column_type, "length", None),
-        getattr(column_type, "precision", None),
-        getattr(column_type, "scale", None),
-    )
+    """
+    Reducir tipos SQLAlchemy a una firma comparable entre dialectos.
+
+    PostgreSQL refleja ``DateTime`` como ``TIMESTAMP`` y ``Float`` como
+    ``DOUBLE PRECISION``. Comparar nombres de clase haría fallar la validación
+    aunque el contrato ORM sea correcto, por lo que se compara la familia de
+    tipo y, cuando aplica, la longitud/precisión.
+    """
+    if isinstance(column_type, sa_types.Boolean):
+        return ("boolean",)
+    if isinstance(column_type, sa_types.Float):
+        return ("float",)
+    if isinstance(column_type, sa_types.Numeric):
+        return (
+            "numeric",
+            getattr(column_type, "precision", None),
+            getattr(column_type, "scale", None),
+        )
+    if isinstance(column_type, sa_types.Integer):
+        return ("integer",)
+    if isinstance(column_type, sa_types.DateTime):
+        return ("datetime",)
+    if isinstance(column_type, sa_types.String):
+        return ("string", getattr(column_type, "length", None))
+    return (type(column_type).__name__.lower(),)
 
 
 def validate_schema() -> None:
@@ -166,9 +200,8 @@ def validate_schema() -> None:
     Esta validación es deliberadamente estricta: detecta tablas sobrantes o
     ausentes, columnas distintas, tipos, nulabilidad, claves primarias y
     restricciones foráneas. El resultado evita que una versión de la
-    aplicación opere sobre una base parcialmente migrada y, al no llamar a
-    ``create_all``, deja la administración del esquema exclusivamente en el
-    proceso de despliegue que ejecuta ``schema.sql``.
+    aplicación opere sobre una base parcialmente migrada y deja la
+    administración del esquema alineada con ``db/schema.postgres.sql``.
     """
     engine = get_engine()
     inspector = inspect(engine)
@@ -230,10 +263,40 @@ def validate_schema() -> None:
             raise SchemaValidationError(
                 f"La base de datos '{database_name}' no contiene tablas. "
                 "Ejecuta el esquema oficial antes de iniciar la aplicación: "
-                f"mysql -u <usuario> -p {database_name} < schema.sql"
+                f"psql -U <usuario> -d {database_name} -f db/schema.postgres.sql"
             )
         raise SchemaValidationError(
-            "La base de datos no coincide con schema.sql: " + "; ".join(errors)
+            "La base de datos no coincide con el esquema ORM: " + "; ".join(errors)
+        )
+
+
+def _ensure_postgres_indexes() -> None:
+    """
+    Crear índices que ``create_all`` no añade a tablas ya existentes.
+
+    El índice único es parte del contrato de integridad del diccionario: evita
+    dos traducciones para la misma fuente dentro de una dirección, ignorando
+    mayúsculas y espacios exteriores. Se aplica solo en PostgreSQL porque usa
+    una expresión portable entre las instalaciones soportadas.
+    """
+    if get_engine().dialect.name != "postgresql":
+        return
+    with get_engine().begin() as connection:
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS "
+                "uq_language_pair_direction_source_ci "
+                "ON language_pair ("
+                "source_language_id, target_language_id, "
+                "lower(btrim(source_text))"
+                ")"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_language_pair_direction "
+                "ON language_pair (source_language_id, target_language_id)"
+            )
         )
 
 
@@ -241,15 +304,16 @@ def init_db() -> None:
     """
     Provisionar y validar el esquema administrado por el ORM.
 
-    El ORM crea la base MySQL si falta y crea las tablas declaradas en
-    ``Base.metadata``. Después se ejecuta la comparación estricta para detectar
-    diferencias de tipos, nulabilidad o relaciones. No se hacen migraciones
-    destructivas: una tabla o columna incompatible provoca un error explícito
-    para que pueda corregirse sin perder datos.
+    El ORM crea la base (PostgreSQL, MySQL/MariaDB o SQLite) si falta y crea las
+    tablas declaradas en ``Base.metadata``. Después se ejecuta la comparación
+    estricta para detectar diferencias de tipos, nulabilidad o relaciones. No se
+    hacen migraciones destructivas: una tabla o columna incompatible provoca un
+    error explícito para que pueda corregirse sin perder datos.
     """
     ensure_database_exists()
     try:
         Base.metadata.create_all(bind=get_engine())
+        _ensure_postgres_indexes()
     except OperationalError as error:
         original = str(error.orig or error)
         if "REFERENCES command denied" in original or "1142" in original:
@@ -267,38 +331,63 @@ def init_db() -> None:
 
 def seed_defaults() -> None:
     """
-    Insertar los idiomas soportados por el adaptador NLLB y un dataset activo
-    cuando las tablas están vacías, para que el desplegable de la interfaz
-    siempre tenga opciones de traducción.
+    Insertar idiomas, datasets y direcciones base cuando faltan.
+
+    Se usan identificadores estables para que la importación de datos y el
+    repositorio puedan asociar cada par con el corpus correcto:
+    ``dataset 1 = piapoco`` y ``dataset 2 = achagua``.
     """
     from infrastructure.db import get_session
 
     session = get_session()
     try:
-        language_count = session.execute(
-            select(func.count()).select_from(Language)
-        ).scalar_one()
-        if language_count == 0:
-            session.add_all([
-                Language(id=1, code="es", name="Español", active="true"),
-                Language(id=2, code="piapoco", name="Piapoco", active="true"),
-                Language(id=3, code="achagua", name="Achagua", active="true"),
-            ])
-
-        dataset_count = session.execute(
-            select(func.count()).select_from(Dataset)
-        ).scalar_one()
-        if dataset_count == 0:
-            session.add(
-                Dataset(
-                    id=1,
-                    name="default",
-                    version="1",
-                    description="Dataset inicial",
-                    status="active",
-                    created_at=datetime.utcnow(),
+        for language_id, code, name in (
+            (1, "es", "Español"),
+            (2, "piapoco", "Piapoco"),
+            (3, "achagua", "Achagua"),
+        ):
+            if session.get(Language, language_id) is None:
+                session.add(
+                    Language(id=language_id, code=code, name=name, active="true")
                 )
-            )
+
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        for dataset_id, name, description in (
+            (1, "piapoco", "Corpus piapoco"),
+            (2, "achagua", "Corpus achagua"),
+        ):
+            existing = session.get(Dataset, dataset_id)
+            if existing is None:
+                session.add(
+                    Dataset(
+                        id=dataset_id,
+                        name=name,
+                        version="1",
+                        description=description,
+                        status="active",
+                        created_at=now,
+                    )
+                )
+            elif existing.name == "default":
+                existing.name = name
+                existing.description = description
+
+        for direction_id, source_id, target_id in (
+            (1, 1, 2),
+            (2, 2, 1),
+            (3, 1, 3),
+            (4, 3, 1),
+        ):
+            if session.get(TranslationDirection, direction_id) is None:
+                session.add(
+                    TranslationDirection(
+                        id=direction_id,
+                        source_language_id=source_id,
+                        target_language_id=target_id,
+                        active=1,
+                    )
+                )
+
         session.commit()
     except Exception:
         session.rollback()

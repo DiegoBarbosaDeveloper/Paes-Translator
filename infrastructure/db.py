@@ -15,7 +15,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import scoped_session, sessionmaker
 
 
-DEFAULT_DATABASE_URL = "mysql+pymysql://admin:admin123@localhost:3306/nasa_yuwe_translator"
+DEFAULT_DATABASE_URL = "mysql+pymysql://admin:admin123@localhost:3306/traductor"
 
 _engine = None
 _session_factory = None

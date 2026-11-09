@@ -6,7 +6,7 @@ import os
 
 
 class MediaRepository:
-    """Mantiene media fuera de la BD porque schema.sql no define una tabla para ella."""
+    """Mantiene media fuera de la BD porque el esquema no define una tabla para ella."""
 
     def __init__(self, session):
         self.root = os.path.join("static", "uploads")

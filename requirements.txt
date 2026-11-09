@@ -11,7 +11,8 @@ peft
 sentencepiece
 huggingface_hub
 
-# Dependencias para MySQL (XAMPP)
+# Dependencias para PostgreSQL (psycopg v3) y compatibilidad legacy MySQL
+psycopg[binary]>=3.2
 PyMySQL
 SQLAlchemy
 
