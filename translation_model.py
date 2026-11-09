@@ -28,8 +28,16 @@ import os
 import threading
 from pathlib import Path
 
-import torch
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+try:
+    import torch
+except ImportError:  # Dependencia opcional: solo necesaria para el modelo NLLB
+    torch = None
+
+try:
+    from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+except ImportError:  # Dependencia opcional: solo necesaria para el modelo NLLB
+    AutoModelForSeq2SeqLM = None
+    AutoTokenizer = None
 
 from database import get_db
 
@@ -73,7 +81,7 @@ class AdvancedTranslationModel:
         self.tokenizer = None
         self.dictionary = {}
         self.model_loaded = False
-        self.device = torch.device("cpu")
+        self.device = torch.device("cpu") if torch is not None else None
         self.tags: dict[str, str] = {}
         self._lock = threading.Lock()
 
@@ -216,6 +224,15 @@ class AdvancedTranslationModel:
         se registra y deja el motor en estado ``none`` para que el fallback
         continúe.
         """
+        if torch is None or AutoTokenizer is None or AutoModelForSeq2SeqLM is None:
+            self.logger = logging.getLogger(__name__)
+            self.logger.warning(
+                "Dependencias de IA no instaladas (torch/transformers); "
+                "el modelo NLLB no estará disponible y se usará el diccionario."
+            )
+            self.model_type = "none"
+            return
+
         if not (self.adapter_dir / self.ADAPTER_CONFIG).exists():
             self.logger.warning(
                 "Adaptador NLLB no encontrado en '%s'; usando solo el diccionario.",

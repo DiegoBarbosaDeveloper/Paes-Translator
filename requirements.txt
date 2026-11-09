@@ -1,62 +1,15 @@
-# Dependencias principales del servidor web
+# Dependencias minimas para la aplicacion web (Flask) y PostgreSQL (Supabase).
+# No incluye torch/transformers ni tooling de entrenamiento: ver
+# requirements-training.txt para ese grupo opcional.
+
+# Servidor web
 Flask
 Werkzeug
+gunicorn
 
-# Dependencias para el modelo de traducción
-transformers
-torch
-tokenizers
-safetensors
-peft
-sentencepiece
-huggingface_hub
-
-# Dependencias para PostgreSQL (psycopg v3) y compatibilidad legacy MySQL
-psycopg[binary]>=3.2
-PyMySQL
+# ORM y acceso a datos
 SQLAlchemy
+psycopg[binary]>=3.2
 
-# Dependencias para procesamiento de datos
-numpy
-pandas
-scipy
-
-# Dependencias para manejo de archivos JSON y texto
-typing-extensions
-
-# Dependencias para logging y configuración
+# Configuracion
 python-dotenv
-
-# Dependencias opcionales para reconocimiento de voz (lado cliente)
-# Nota: SpeechRecognition se maneja en el navegador con Web Speech API
-
-# Dependencias para procesamiento de imágenes (si se necesita)
-Pillow
-
-# Dependencias para desarrollo y testing
-pytest
-pytest-flask
-
-# Dependencias del sistema
-requests
-urllib3
-
-# Dependencias para manejo de archivos de audio (opcional)
-soundfile
-
-# Dependencias para compatibilidad
-six
-certifi
-
-pandas
-numpy
-matplotlib
-transformers
-datasets
-accelerate
-sentencepiece
-sacrebleu
-peft
-scikit-learn
-jupyter
-prompt-toolkit

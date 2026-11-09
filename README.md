@@ -231,7 +231,7 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-> El modelo base NLLB y el adaptador LoRA requieren `torch`, `transformers` y `peft` (ya incluidos en `requirements.txt`). En la primera ejecución, si no existen los pesos locales, se descargarán desde HuggingFace (~2.4 GB) o se podrá descargar desde el panel **Modelo IA**.
+> La aplicación web funciona con `requirements.txt`. Para usar el modelo NLLB o entrenar, instala además `requirements-training.txt` (alias `requirements-ml.txt`), que incluye `torch`, `transformers` y `peft`. En la primera ejecución, si no existen los pesos locales, se descargarán desde HuggingFace (~2.4 GB) o se podrá descargar desde el panel **Modelo IA**.
 
 ---
 
@@ -310,7 +310,7 @@ Abre `http://127.0.0.1:5000` en el navegador. Al arrancar, la app:
 
 ```bash
 cd NLLBTest1
-pip install -r requirements.txt
+pip install -r ../requirements-training.txt
 
 # Traducir desde la terminal
 python -m src.cli --src spanish --tgt piapoco --text "Buenos dias"

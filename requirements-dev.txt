@@ -1,0 +1,5 @@
+-r requirements.txt
+
+# Pruebas automatizadas
+pytest
+pytest-flask
