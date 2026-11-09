@@ -15,7 +15,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import scoped_session, sessionmaker
 
 
-DEFAULT_DATABASE_URL = "mysql+pymysql://admin:admin123@localhost:3306/nasa_yuwe_translator"
+DEFAULT_DATABASE_URL = "postgresql+psycopg://admin:admin123@localhost:5432/postgres"
 
 _engine = None
 _session_factory = None
@@ -23,7 +23,13 @@ _session_factory = None
 
 def get_database_url() -> str:
     """Obtener URL de conexión desde variables de entorno o valor por defecto."""
-    return os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
+    url = os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
+    # Normalizar alias comunes al driver psycopg v3 usado por el proyecto.
+    if url.startswith("postgres://"):
+        url = "postgresql+psycopg://" + url[len("postgres://"):]
+    elif url.startswith("postgresql://") and "+psycopg" not in url:
+        url = "postgresql+psycopg://" + url[len("postgresql://"):]
+    return url
 
 
 def get_engine():
@@ -63,6 +69,18 @@ def ensure_database_exists() -> None:
             connection.execute(text(f"CREATE DATABASE IF NOT EXISTS `{url.database}`"))
     finally:
         server_engine.dispose()
+
+
+def reset_engine() -> None:
+    """Descartar el engine/sesión singleton (útil en scripts y tests)."""
+    global _engine, _session_factory
+    if _engine is not None:
+        try:
+            _engine.dispose()
+        except Exception:
+            pass
+    _engine = None
+    _session_factory = None
 
 
 def get_session_factory():

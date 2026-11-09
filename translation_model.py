@@ -28,8 +28,16 @@ import os
 import threading
 from pathlib import Path
 
-import torch
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+try:
+    import torch
+except ImportError:  # Dependencia opcional: solo necesaria para el modelo NLLB
+    torch = None
+
+try:
+    from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+except ImportError:  # Dependencia opcional: solo necesaria para el modelo NLLB
+    AutoModelForSeq2SeqLM = None
+    AutoTokenizer = None
 
 from database import get_db
 
@@ -73,7 +81,7 @@ class AdvancedTranslationModel:
         self.tokenizer = None
         self.dictionary = {}
         self.model_loaded = False
-        self.device = torch.device("cpu")
+        self.device = torch.device("cpu") if torch is not None else None
         self.tags: dict[str, str] = {}
         self._lock = threading.Lock()
 
@@ -94,11 +102,42 @@ class AdvancedTranslationModel:
         self._load_nllb_model()
 
     def _load_dictionary(self, source_lang, target_lang):
-        """Cargar los pares de texto de la dirección solicitada."""
+        """Cargar los pares de texto de la dirección solicitada.
+
+        La base solo almacena pares español -> piapoco/achagua. Para las
+        direcciones inversas se construye el diccionario a partir de esos
+        pares, invirtiendo origen y destino. Las claves se normalizan para que
+        la búsqueda no dependa de mayúsculas ni de espacios exteriores.
+        """
         try:
             source_lang = source_lang.strip()
             target_lang = target_lang.strip()
-            self.dictionary = self.db.get_dictionary(source_lang, target_lang)
+            raw = self.db.get_dictionary(source_lang, target_lang)
+
+            # Si no hay pares directos, intentar construirlos a partir de la
+            # dirección opuesta ya almacenada (piapoco/achagua -> español).
+            if not raw:
+                opposite = self.db.get_dictionary(target_lang, source_lang)
+                if opposite:
+                    raw = {
+                        item["target_text"]: {
+                            "target_text": key,
+                            "validation_status": item.get("validation_status"),
+                        }
+                        for key, item in opposite.items()
+                    }
+
+            self.dictionary = {}
+            for source_text, info in (raw or {}).items():
+                if not isinstance(info, dict):
+                    info = {"target_text": info}
+                target_text = info.get("target_text", "")
+                if not str(source_text).strip() or not str(target_text).strip():
+                    continue
+                self.dictionary[str(source_text).strip().casefold()] = {
+                    "target_text": str(target_text).strip(),
+                    "validation_status": info.get("validation_status"),
+                }
             self.logger.info(f"Pares cargados: {len(self.dictionary)}")
         except Exception as e:
             self.logger.error(f"Error cargando pares lingüísticos: {e}")
@@ -185,6 +224,15 @@ class AdvancedTranslationModel:
         se registra y deja el motor en estado ``none`` para que el fallback
         continúe.
         """
+        if torch is None or AutoTokenizer is None or AutoModelForSeq2SeqLM is None:
+            self.logger = logging.getLogger(__name__)
+            self.logger.warning(
+                "Dependencias de IA no instaladas (torch/transformers); "
+                "el modelo NLLB no estará disponible y se usará el diccionario."
+            )
+            self.model_type = "none"
+            return
+
         if not (self.adapter_dir / self.ADAPTER_CONFIG).exists():
             self.logger.warning(
                 "Adaptador NLLB no encontrado en '%s'; usando solo el diccionario.",
@@ -237,24 +285,35 @@ class AdvancedTranslationModel:
         if not self.dictionary:
             return None
 
-        words = text.lower().split()
+        normalized_text = text.strip().casefold()
+
+        # Primero buscar la frase completa, porque el corpus contiene frases
+        # enteras y no solo palabras sueltas.
+        if normalized_text in self.dictionary:
+            return {
+                "translation": self.dictionary[normalized_text]["target_text"],
+                "method": "dictionary",
+                "confidence": 0.80,
+                "tried_methods": ["nllb", "dictionary"],
+            }
+
+        # Mantener como respaldo la traducción palabra por palabra.
+        words = normalized_text.split()
         translated_words = []
         found_translations = False
-
         for word in words:
             if word in self.dictionary:
-                translated_words.append(self.dictionary[word]['target_text'])
+                translated_words.append(self.dictionary[word]["target_text"])
                 found_translations = True
             else:
                 translated_words.append(word)
 
         if found_translations:
-            result = ' '.join(translated_words)
             return {
-                'translation': result,
-                'method': 'dictionary',
-                'confidence': 0.80,
-                'tried_methods': ['nllb', 'dictionary']
+                "translation": " ".join(translated_words),
+                "method": "dictionary",
+                "confidence": 0.80,
+                "tried_methods": ["nllb", "dictionary"],
             }
 
         return None

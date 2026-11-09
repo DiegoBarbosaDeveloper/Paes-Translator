@@ -83,4 +83,6 @@ class TrainingService:
             "train_pairs": metadata["train_pairs"],
             "val_pairs": metadata["val_pairs"],
             "dict_entries": metadata["dictionary_entries"],
+            "piapoco_pairs": metadata.get("piapoco_pairs", 0),
+            "achagua_pairs": metadata.get("achagua_pairs", 0),
         }, 200

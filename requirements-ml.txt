@@ -1,0 +1,34 @@
+# Dependencias opcionales para IA, entrenamiento, exportacion de corpus y CLI.
+# Solo necesarias si se va a cargar el modelo NLLB o entrenar en NLLBTest1.
+# Instalar con: pip install -r requirements-training.txt
+
+# Inferencia NLLB (LoRA)
+torch
+transformers
+tokenizers
+safetensors
+peft
+sentencepiece
+huggingface_hub
+
+# Procesamiento de datos y ML auxiliar
+numpy
+pandas
+scipy
+Pillow
+soundfile
+requests
+urllib3
+datasets
+accelerate
+sacrebleu
+scikit-learn
+matplotlib
+jupyter
+prompt-toolkit
+six
+certifi
+typing-extensions
+
+# Compatibilidad legacy MySQL (opcional)
+PyMySQL

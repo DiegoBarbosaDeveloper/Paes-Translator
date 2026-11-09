@@ -14,7 +14,7 @@ la sesión ORM en estado inválido.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -47,16 +47,32 @@ class DictionaryRepository:
             )
         ).scalar_one_or_none()
 
-    def _dataset_id(self) -> int | None:
-        return self.session.execute(
-            select(Dataset.id)
-            .where(func.lower(Dataset.status).in_(["active", "activo"]))
-            .order_by(Dataset.id)
-        ).scalar_one_or_none()
+    def _dataset_id(self, target_language_id: int | None = None) -> int | None:
+        """
+        Resolver el dataset asociado al idioma destino.
 
-    def _next_id(self) -> int:
-        current = self.session.execute(select(func.max(LanguagePair.id))).scalar_one()
-        return (current or 0) + 1
+        La importación crea un dataset por idioma (``piapoco`` y ``achagua``)
+        para que las nuevas palabras queden en el corpus correcto. Si el
+        dataset específico no existe se usa el primer dataset activo como
+        compatibilidad con instalaciones anteriores.
+        """
+        query = select(Dataset.id).where(
+            func.lower(Dataset.status).in_(["active", "activo"])
+        )
+        if target_language_id is not None:
+            language = self.session.get(Language, target_language_id)
+            code = (language.code or "").strip().casefold() if language else ""
+            if code:
+                dataset_id = self.session.execute(
+                    query.where(func.lower(Dataset.name) == code)
+                    .order_by(Dataset.id)
+                    .limit(1)
+                ).scalar_one_or_none()
+                if dataset_id is not None:
+                    return dataset_id
+        return self.session.execute(
+            query.order_by(Dataset.id).limit(1)
+        ).scalar_one_or_none()
 
     def _query_pairs(self, source_language: str, target_language: str):
         source_id = self._language_id(source_language)
@@ -154,19 +170,18 @@ class DictionaryRepository:
             return False
         source_id = self._language_id(source_language)
         target_id = self._language_id(target_language)
-        dataset_id = self._dataset_id()
+        dataset_id = self._dataset_id(target_id)
         if source_id is None or target_id is None or dataset_id is None:
             return False
 
         entity = LanguagePair(
-            id=self._next_id(),
             dataset_id=dataset_id,
             source_language_id=source_id,
             target_language_id=target_id,
             source_text=source_text,
             target_text=target_text,
             validation_status=validation_status,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc).replace(tzinfo=None),
         )
         self.session.add(entity)
         try:
